@@ -1,0 +1,126 @@
+#include <LiquidCrystal.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include "DHT.h"
+
+// LCD
+LiquidCrystal lcd(13, 12, 14, 27, 26, 25);
+
+// WiFi
+const char* ssid = "iotserver";
+const char* password = "iotserver123";
+String server = "http://projectsfactoryserver.in/storedata.php?name=iot1681";
+
+// DHT Sensor
+#define DHTPIN 19
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+
+// Pins
+int buzzer = 21;
+int fan = 22;
+int pump = 23;
+int mos = 5;
+int ldr = 18;
+
+// Variables
+int temp, hum;
+String soilStatus, lightStatus;
+int counter = 0;
+
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(buzzer, OUTPUT);
+  pinMode(fan, OUTPUT);
+  pinMode(pump, OUTPUT);
+  pinMode(mos, INPUT);
+  pinMode(ldr, INPUT);
+
+  lcd.begin(16, 2);
+  lcd.print("Env Monitoring");
+  delay(2000);
+  lcd.clear();
+
+  // WiFi connect
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+  }
+
+  dht.begin();
+}
+
+void loop() {
+
+  // Read DHT
+  temp = dht.readTemperature();
+  hum  = dht.readHumidity();
+
+  // Display
+  lcd.setCursor(0, 0);
+  lcd.print("T:");
+  lcd.print(temp);
+  lcd.print(" H:");
+  lcd.print(hum);
+
+  // Temperature control
+  if (temp > 40 || hum > 85) {
+    digitalWrite(fan, HIGH);
+    digitalWrite(buzzer, LOW);
+    sendData();
+  } else {
+    digitalWrite(fan, LOW);
+    digitalWrite(buzzer, HIGH);
+  }
+
+  // Soil moisture
+  if (digitalRead(mos) == LOW) {
+    soilStatus = "Wet";
+    digitalWrite(pump, LOW);
+  } else {
+    soilStatus = "Dry";
+    digitalWrite(pump, HIGH);
+  }
+
+  lcd.setCursor(0, 1);
+  lcd.print("M:");
+  lcd.print(soilStatus);
+
+  // Light detection
+  if (digitalRead(ldr) == LOW) {
+    lightStatus = "Light";
+  } else {
+    lightStatus = "Dark";
+  }
+
+  lcd.setCursor(8, 1);
+  lcd.print("L:");
+  lcd.print(lightStatus);
+
+  delay(1000);
+
+  counter++;
+  if (counter >= 50) {
+    sendData();
+    counter = 0;
+  }
+}
+
+// Function to send data
+void sendData() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+
+    String url = server +
+                 "&s1=" + String(temp) +
+                 "&s2=" + String(hum) +
+                 "&s3=" + soilStatus +
+                 "&s4=" + lightStatus;
+
+    http.begin(url);
+    int code = http.GET();
+
+    http.end();
+  }
+}
